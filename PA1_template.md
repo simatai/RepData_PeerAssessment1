@@ -83,7 +83,20 @@ summary(steps_per_day)
 ```
 
 ```r
-# ... or alternatively we could use mean() and median() and produce a table using xtable
+# ... or alternatively we could use mean() and median() 
+mean(steps_per_day$steps)
+```
+
+```
+## [1] 10766.19
+```
+
+```r
+median(steps_per_day$steps)
+```
+
+```
+## [1] 10765
 ```
 
 The mean is 10766 steps per day, the median is 10765 steps per day.
@@ -115,7 +128,18 @@ print(highest_activity)
 
 ## Imputing missing data 
 
-Above we saw that on some dates no steps were measured at all. Whatever the reason (maybe the owner forgot to switch the device on), we're tasked to impute data for the dates were no steps were measured.
+Above we saw that on some dates no steps were measured at all. 
+
+
+```r
+nrow(activity[is.na(activity$steps),])
+```
+
+```
+## [1] 2304
+```
+
+Whatever the reason for the 2304 missing rows (maybe the owner forgot to switch the device on), we're tasked to impute data for the dates were no steps were measured.
 Because activity patterns differ between weekend and weekday (shown below in detail), we're careful to impute a separate data point for each day of the week separately. We compute the mean of all the 5min interval for each day of the week and aggregate.
  
 
@@ -137,11 +161,18 @@ head(steps_per_wday)
 ```
 
 ```r
-activity_imputed <- merge(activity, steps_per_wday, all.x=TRUE)
+# we now have a list of all (intervals, weekdays) with the associated mean number of steps for
+# e.g. a "typical Monday interval No. 100"! Join that to the data:
+
+activity_imputed <- merge(activity, steps_per_wday, all.x=TRUE, by=c("interval", "wday"))
 activity_imputed$steps <- ifelse(is.na(activity_imputed$steps), activity_imputed$imputed_steps, activity_imputed$steps)
 activity_imputed$isImputed <- activity_imputed$imputed_steps == activity_imputed$steps
 
 steps_per_day.imputed <- aggregate(steps ~ date+isImputed, activity_imputed, sum)
+# Due to the working of aggregate, after this step we have entries where 
+# (sum_of_imputed_steps == 0 & isImputed = TRUE) => eliminate those where we have imputed zero steps!
+
+steps_per_day.imputed <- steps_per_day.imputed[which(!(steps_per_day.imputed$steps == 0 &                                                                       steps_per_day.imputed$isImputed)),]
 ```
 
 The time series now looks as follows:
@@ -151,18 +182,51 @@ The time series now looks as follows:
 ggplot(steps_per_day.imputed, aes(x=date, y=steps, fill=isImputed)) + geom_bar(stat="identity") + labs(x="Date", y="# of steps") + scale_x_date()
 ```
 
-![](PA1_template_files/figure-html/unnamed-chunk-10-1.png)<!-- -->
+![](PA1_template_files/figure-html/unnamed-chunk-11-1.png)<!-- -->
 
-which is quite plausible. The histogram of the total number of steps taken each day after missing values are imputed is as follows:
+which is quite plausible, except for Nov 15th. We check why no data was imputed, and it turns out that the step variable is 0 rather than NA for all but 2 of the intervals that day:
+
+
+```r
+num_of_intervals_zero <- length(which(activity$date=="2012-11-15" & activity$steps ==0))
+num_of_intervals_total <- length(which(activity$date=="2012-11-15"))
+print(num_of_intervals_total-num_of_intervals_zero)
+```
+
+```
+## [1] 2
+```
+
+The histogram of the total number of steps taken each day after missing values are imputed is as follows:
 
 
 ```r
 ggplot(steps_per_day.imputed, aes(steps, fill=isImputed)) + geom_histogram(breaks=seq(1, 24000, by = 2000)) + labs(x="# of steps", y="# of days")
 ```
 
-![](PA1_template_files/figure-html/unnamed-chunk-11-1.png)<!-- -->
+![](PA1_template_files/figure-html/unnamed-chunk-13-1.png)<!-- -->
 
-Notice that we start the binning of the histogram at 1. That's to account for the fact that for most dates we didn't impute any data, and the count of those dates (roughly 40) for show up at $x = 0$.
+We report the mean and median total number of steps taken per day after imputation:
+
+
+```r
+steps_per_day.by_date <- aggregate(steps ~ date, activity_imputed, sum)
+mean(steps_per_day.by_date$steps)
+```
+
+```
+## [1] 10821.21
+```
+
+```r
+median(steps_per_day.by_date$steps)
+```
+
+```
+## [1] 11015
+```
+
+After imputation the mean is 10821 steps compared to 10766 steps before imputation. The median has moved stronger, from 10765 before imputation to 11015 steps. The shape of the distribution remains basically unchanged.
 
 ## Comparison of activity pattern on weekdays versus weekend 
 
@@ -174,7 +238,7 @@ steps_per_interval <- aggregate(steps ~ interval+isWeekend, activity, mean)
 ggplot(steps_per_interval, aes(x=interval, y=steps)) + geom_line() + labs(x="time interval", y="# of steps") + facet_grid(isWeekend ~ .,  labeller = as_labeller(c('FALSE'="Weekday", 'TRUE'="Weekend"))) 
 ```
 
-![](PA1_template_files/figure-html/unnamed-chunk-12-1.png)<!-- -->
+![](PA1_template_files/figure-html/unnamed-chunk-15-1.png)<!-- -->
 
 On weekdays there's a clear peak in activity around interval 800, after which activity is reduced. On weekends activity is more distributed, without a clear peak. Overall, activity is higher on weekends than on weekdays.
 
